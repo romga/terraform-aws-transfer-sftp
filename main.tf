@@ -12,10 +12,15 @@ locals {
     })
   }
 
-  # Flatten users' public keys into a map keyed by a stable per-key token, so a user can have more than one key
+  # Each user may have several public keys, but aws_transfer_ssh_key holds exactly one key per resource.
+  # 1. The inner `for` turns each user into a list of {user_name, public_key} objects, one per key.
+  # 2. `flatten` merges those per-user lists into a single list covering every key of every user.
+  # 3. The outer `for` converts that list into a map for `for_each`. Each entry is keyed by
+  #    md5("<user_name>#<public_key>"): a fixed-length key (raw SSH keys are hundreds of characters long)
+  #    that stays stable when other keys are added or removed, so only the changed key is recreated.
   ssh_keys = {
     for item in flatten([
-      for user, val in var.sftp_users : [
+      for val in var.sftp_users : [
         for key in val.public_keys : {
           user_name  = val.user_name
           public_key = key
