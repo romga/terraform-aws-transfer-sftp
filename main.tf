@@ -11,6 +11,18 @@ locals {
       s3_bucket_arn = val.s3_bucket_name != null ? "${local.s3_arn_prefix}${val.s3_bucket_name}" : one(data.aws_s3_bucket.landing[*].arn)
     })
   }
+
+  # Flatten users' public keys into a map keyed by a stable per-key token, so a user can have more than one key
+  ssh_keys = {
+    for item in flatten([
+      for user, val in var.sftp_users : [
+        for key in val.public_keys : {
+          user_name  = val.user_name
+          public_key = key
+        }
+      ]
+    ]) : md5("${item.user_name}#${item.public_key}") => item
+  }
 }
 
 data "aws_partition" "default" {
@@ -89,7 +101,7 @@ resource "aws_transfer_user" "default" {
 }
 
 resource "aws_transfer_ssh_key" "default" {
-  for_each = local.enabled ? var.sftp_users : {}
+  for_each = local.enabled ? local.ssh_keys : {}
 
   server_id = join("", aws_transfer_server.default[*].id)
 
